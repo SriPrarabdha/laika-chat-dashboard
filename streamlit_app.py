@@ -306,7 +306,6 @@
 #     except Exception as e:
 #         st.sidebar.error(f"Connection error: {str(e)}")
 
- 
 import streamlit as st
 import requests
 import uuid
@@ -560,46 +559,36 @@ if option == "Browse Conversations":
                 st.markdown(f"<div class='sub-header'>Select Conversation ({st.session_state.date_filter.title()})</div>", unsafe_allow_html=True)
                 st.markdown(f"Found {len(chat_data)} unique conversations")
 
-                # Create a container for the grid
-                chat_grid = st.container()
-
-                # Create 5-column grid layout
-                num_chats = len(chat_data)
-                num_rows = (num_chats + 4) // 5
-
-                with chat_grid:
-                    for row in range(num_rows):
-                        cols = st.columns(5)
-                        for col in range(5):
-                            idx = row * 5 + col
-                            if idx < num_chats:
-                                chat = chat_data[idx]
-                                chat_id = chat["chat_id"]
-                                user_id = chat["user_id"]
-
-                                # Determine if this chat is selected
-                                is_selected = (st.session_state.selected_chat_id == chat_id)
-
-                                # Create a checkbox for selection
-                                with cols[col]:
-                                    checked = st.checkbox(
-                                        f"{chat_id[-6:]}",
-                                        key=f"chat_{idx}",
-                                        value=is_selected,
-                                        help=f"User: {user_id}, Chat: {chat_id}"
-                                    )
-                                    if checked:
-                                        # If checked, update the selection, unchecking others is handled implicitly by streamlit rerun
-                                        select_chat(chat_id, user_id)
-                                    elif is_selected and not checked:
-                                        # If currently selected but unchecked by user, clear selection
-                                        st.session_state.selected_chat_id = None
-                                        st.session_state.selected_user_id = None
-
-
-                # Display currently selected chat info if any
-                if st.session_state.selected_chat_id:
+                # Create a container for the chat selection
+                st.markdown("<div class='chat-selection'>", unsafe_allow_html=True)
+                
+                # FIX: Instead of dynamic grid with checkboxes, use radio buttons in a single column
+                # This avoids the ElementNode.setIn error by simplifying the UI structure
+                chat_options = []
+                for idx, chat in enumerate(chat_data):
+                    chat_id = chat["chat_id"]
+                    user_id = chat["user_id"]
+                    chat_options.append({
+                        "label": f"Chat {chat_id[-6:]} (User: {user_id})",
+                        "value": idx
+                    })
+                
+                if chat_options:
+                    selected_idx = st.radio(
+                        "Select a conversation:",
+                        options=range(len(chat_options)),
+                        format_func=lambda i: chat_options[i]["label"],
+                        key="chat_radio"
+                    )
+                    
+                    # Update selection in session state
+                    selected_chat = chat_data[selected_idx]
+                    select_chat(selected_chat["chat_id"], selected_chat["user_id"])
+                    
+                    # Display selected info
                     st.success(f"Selected: User {st.session_state.selected_user_id} - Chat {st.session_state.selected_chat_id}")
+                
+                st.markdown("</div>", unsafe_allow_html=True)
 
                 # Submit button to confirm selection
                 if st.button("View Conversation", use_container_width=True):
