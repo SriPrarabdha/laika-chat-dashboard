@@ -312,11 +312,60 @@ import requests
 import uuid
 from datetime import datetime, timedelta
 
+# --- Configuration ---
 st.set_page_config(
     page_title="Laika Chat Dashboard",
     page_icon="💬",
     layout="wide",
 )
+
+# --- Authentication ---
+# WARNING: Hardcoding credentials is not secure for production.
+# Consider using environment variables, secrets management, or a dedicated auth library.
+CORRECT_USERNAME = "laika-admin"
+CORRECT_PASSWORD = "Laika@Admin@Dashboard@123"
+
+def check_password():
+    """Returns `True` if the user had the correct password."""
+
+    # Initialize authentication status if it doesn't exist
+    if "authenticated" not in st.session_state:
+        st.session_state["authenticated"] = False
+
+    # If already authenticated, do nothing further here
+    if st.session_state["authenticated"]:
+        return True
+
+    # --- Login Form ---
+    st.markdown("<h1 style='text-align: center;'>Login Required</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center;'>Please enter your credentials to access the dashboard.</p>", unsafe_allow_html=True)
+
+    login_form = st.empty() # Use a placeholder
+
+    with login_form.form("credentials"):
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
+        submitted = st.form_submit_button("Login")
+
+        if submitted:
+            if username == CORRECT_USERNAME and password == CORRECT_PASSWORD:
+                st.session_state["authenticated"] = True
+                login_form.empty() # Clear the form
+                st.success("Login successful!")
+                st.rerun() # Rerun the script to show the main app
+            else:
+                st.error("Incorrect username or password")
+                st.session_state["authenticated"] = False # Ensure state is false on failure
+
+    return st.session_state["authenticated"] # Return current auth status
+
+# --- Main Application Logic ---
+
+# Call the authentication check first. If it returns False, stop execution.
+if not check_password():
+    st.stop() # Stop the app execution if not authenticated
+
+# --- If authenticated, the rest of the app runs ---
 
 st.markdown("""
 <style>
@@ -413,15 +462,21 @@ st.markdown("""
 API_URL = "https://chat-dashboard-239264243926.us-central1.run.app/"
 API_KEY = str(uuid.uuid5(uuid.NAMESPACE_DNS, "laika_dashboard"))
 
+# --- Sidebar ---
 with st.sidebar:
     st.markdown("<h1 style='text-align: center;'>💬 Chat Dashboard</h1>", unsafe_allow_html=True)
     st.markdown("---")
     option = st.radio(
-        "Dashboard Mode", 
+        "Dashboard Mode",
         ["Browse Conversations", "Search Messages"],
-        help="Switch between browsing chats or searching for specific messages"
+        help="Switch between Browse chats or searching for specific messages"
     )
+    st.markdown("---") # Separator
+    if st.button("Logout", key="logout_button"):
+        st.session_state["authenticated"] = False
+        st.rerun()
 
+# --- Session State Initialization (for app functionality) ---
 if 'selected_chat_id' not in st.session_state:
     st.session_state.selected_chat_id = None
 if 'selected_user_id' not in st.session_state:
@@ -432,6 +487,7 @@ if 'conversation_submitted' not in st.session_state:
 if 'date_filter' not in st.session_state:
     st.session_state.date_filter = 'today'
 
+# --- Helper Functions ---
 def select_chat(chat_id, user_id):
     st.session_state.selected_chat_id = chat_id
     st.session_state.selected_user_id = user_id
@@ -442,6 +498,7 @@ def set_date_filter(filter_name):
     st.session_state.selected_user_id = None
     st.session_state.conversation_submitted = False
 
+# --- Browse Conversations Mode ---
 if option == "Browse Conversations":
     st.markdown("<div class='main-header'>Laika Chat Conversations</div>", unsafe_allow_html=True)
     st.markdown("Explore conversations between users and the AI assistant.")
@@ -449,7 +506,7 @@ if option == "Browse Conversations":
     col1, col2, col3 = st.columns([1, 1, 5])
     with col1:
         today_btn = st.button(
-            "Today", 
+            "Today",
             key="today_btn",
             type="primary" if st.session_state.date_filter == 'today' else "secondary",
             use_container_width=True,
@@ -458,14 +515,14 @@ if option == "Browse Conversations":
         )
     with col2:
         yesterday_btn = st.button(
-            "Yesterday", 
+            "Yesterday",
             key="yesterday_btn",
             type="primary" if st.session_state.date_filter == 'yesterday' else "secondary",
             use_container_width=True,
             on_click=set_date_filter,
             args=('yesterday',)
         )
-    
+
     now = datetime.now()
     if st.session_state.date_filter == 'today':
         start_date = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
@@ -474,11 +531,11 @@ if option == "Browse Conversations":
         yesterday = now - timedelta(days=1)
         start_date = yesterday.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
         end_date = yesterday.replace(hour=23, minute=59, second=59).isoformat()
-    
+
     if not st.session_state.conversation_submitted:
         try:
             response = requests.get(
-                f"{API_URL}/chats", 
+                f"{API_URL}/chats",
                 params={
                     "api_key": API_KEY,
                     "start_date": start_date,
@@ -487,7 +544,7 @@ if option == "Browse Conversations":
             )
             response.raise_for_status()
             chats = response.json()
-            
+
             if chats:
                 unique_chats = {}
                 for chat in chats:
@@ -497,19 +554,19 @@ if option == "Browse Conversations":
                             "chat_id": chat_id,
                             "user_id": chat["user_id"]
                         }
-                
+
                 chat_data = list(unique_chats.values())
-                
+
                 st.markdown(f"<div class='sub-header'>Select Conversation ({st.session_state.date_filter.title()})</div>", unsafe_allow_html=True)
                 st.markdown(f"Found {len(chat_data)} unique conversations")
-                
+
                 # Create a container for the grid
                 chat_grid = st.container()
-                
+
                 # Create 5-column grid layout
                 num_chats = len(chat_data)
-                num_rows = (num_chats + 4) // 5 
-                
+                num_rows = (num_chats + 4) // 5
+
                 with chat_grid:
                     for row in range(num_rows):
                         cols = st.columns(5)
@@ -519,26 +576,31 @@ if option == "Browse Conversations":
                                 chat = chat_data[idx]
                                 chat_id = chat["chat_id"]
                                 user_id = chat["user_id"]
-                                
+
                                 # Determine if this chat is selected
                                 is_selected = (st.session_state.selected_chat_id == chat_id)
-                                
+
                                 # Create a checkbox for selection
                                 with cols[col]:
                                     checked = st.checkbox(
-                                        f"{chat_id[-6:]}", 
-                                        key=f"chat_{idx}", 
-                                        value=is_selected, 
+                                        f"{chat_id[-6:]}",
+                                        key=f"chat_{idx}",
+                                        value=is_selected,
                                         help=f"User: {user_id}, Chat: {chat_id}"
                                     )
                                     if checked:
+                                        # If checked, update the selection, unchecking others is handled implicitly by streamlit rerun
                                         select_chat(chat_id, user_id)
+                                    elif is_selected and not checked:
+                                        # If currently selected but unchecked by user, clear selection
+                                        st.session_state.selected_chat_id = None
+                                        st.session_state.selected_user_id = None
 
-                
+
                 # Display currently selected chat info if any
                 if st.session_state.selected_chat_id:
                     st.success(f"Selected: User {st.session_state.selected_user_id} - Chat {st.session_state.selected_chat_id}")
-                
+
                 # Submit button to confirm selection
                 if st.button("View Conversation", use_container_width=True):
                     if st.session_state.selected_chat_id:
@@ -548,17 +610,19 @@ if option == "Browse Conversations":
                         st.error("Please select a conversation first.")
             else:
                 st.info(f"No chats found for {st.session_state.date_filter}.")
-                
+
         except requests.RequestException as e:
             st.error(f"Error fetching chats: {e}")
-    
+
     # Show selected conversation if submitted
     if st.session_state.conversation_submitted and st.session_state.selected_chat_id:
         # Add a button to go back to conversation selection
         if st.button("← Back to Conversation Selection"):
             st.session_state.conversation_submitted = False
+            st.session_state.selected_chat_id = None # Clear selection when going back
+            st.session_state.selected_user_id = None
             st.rerun()
-        
+
         # Show the chat information
         col1, col2 = st.columns(2)
         with col1:
@@ -567,7 +631,7 @@ if option == "Browse Conversations":
                 <span style='font-weight: 600; color: #4B5563;'>User ID:</span> {st.session_state.selected_user_id}
             </div>
             """, unsafe_allow_html=True)
-        
+
         with col2:
             st.markdown(f"""
             <div style='padding: 15px; background-color: #f9fafb; border-radius: 8px;'>
@@ -581,8 +645,8 @@ if option == "Browse Conversations":
                 response = requests.get(
                     f"{API_URL}/texts",
                     params={
-                        "api_key": API_KEY, 
-                        "user_id": st.session_state.selected_user_id, 
+                        "api_key": API_KEY,
+                        "user_id": st.session_state.selected_user_id,
                         "chat_id": st.session_state.selected_chat_id,
                         "start_date": start_date,
                         "end_date": end_date
@@ -595,33 +659,34 @@ if option == "Browse Conversations":
             messages = []
 
         st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
-        
+
         if not messages:
             st.info("This conversation has no messages.")
         else:
             st.markdown(f"<div class='sub-header'>Conversation</div>", unsafe_allow_html=True)
-            
+
             # Create a container for the chat with a max height and scrolling
             chat_container = st.container()
-            
+
             with chat_container:
                 for msg in messages:
                     # Format timestamp
-                    created_at = datetime.fromisoformat(msg["created_at"].replace("Z", "+00:00")).strftime("%Y-%m-%d %H:%M:%S")
+                    created_at_dt = datetime.fromisoformat(msg["created_at"].replace("Z", "+00:00"))
+                    created_at_str = created_at_dt.strftime("%Y-%m-%d %H:%M:%S")
 
                     # User Message
                     with st.chat_message("user", avatar="👤"):
                         st.markdown(f"<div class='user-message'>{msg['user_query']}</div>", unsafe_allow_html=True)
-                        st.markdown(f"<div class='timestamp'>{created_at}</div>", unsafe_allow_html=True)
+                        st.markdown(f"<div class='timestamp'>{created_at_str}</div>", unsafe_allow_html=True)
 
                     # Bot Response
                     with st.chat_message("assistant", avatar="🤖"):
                         st.markdown(f"<div class='bot-message'>{msg['crew_response']}</div>", unsafe_allow_html=True)
                         with st.expander("View Crew Processing Log"):
                             st.code(msg["crew_log"])
-                        st.markdown(f"<div class='timestamp'>{created_at}</div>", unsafe_allow_html=True)
+                        st.markdown(f"<div class='timestamp'>{created_at_str}</div>", unsafe_allow_html=True)
 
-# Search Option with improved UI
+# --- Search Messages Mode ---
 elif option == "Search Messages":
     st.markdown("<div class='main-header'>Search Conversations</div>", unsafe_allow_html=True)
     st.markdown("Find specific messages across all conversations.")
@@ -630,20 +695,20 @@ elif option == "Search Messages":
     with st.container():
         st.markdown("<div class='search-box'>", unsafe_allow_html=True)
         keyword = st.text_input("Enter search keyword", placeholder="Type keywords to search...")
-        
+
         col1, col2 = st.columns(2)
         with col1:
             search_logs = st.checkbox("Search Crew Processing Logs", value=True)
         with col2:
             search_response = st.checkbox("Search Crew Responses", value=True)
-            
+
         # Date filter for search as well
         col1, col2, col3 = st.columns([1, 1, 3])
         with col1:
-            today_search = st.checkbox("Today", value=True)
+            today_search = st.checkbox("Today", value=True, key="search_today")
         with col2:
-            yesterday_search = st.checkbox("Yesterday", value=False)
-            
+            yesterday_search = st.checkbox("Yesterday", value=False, key="search_yesterday")
+
         search_button = st.button("🔍 Search", use_container_width=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
@@ -651,31 +716,31 @@ elif option == "Search Messages":
         if not keyword.strip():
             st.error("Please enter a keyword to search for.")
         elif not (search_logs or search_response):
-            st.error("Please select at least one search field.")
+            st.error("Please select at least one search field (Logs or Responses).")
         elif not (today_search or yesterday_search):
-            st.error("Please select at least one date filter.")
+            st.error("Please select at least one date filter (Today or Yesterday).")
         else:
             try:
                 # Get date ranges for search
                 now = datetime.now()
-                start_date = None
-                end_date = None
-                
+                start_date_search = None
+                end_date_search = None
+
                 if today_search and yesterday_search:
                     # Both days selected
                     yesterday = now - timedelta(days=1)
-                    start_date = yesterday.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
-                    end_date = now.isoformat()
+                    start_date_search = yesterday.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+                    end_date_search = now.isoformat()
                 elif today_search:
                     # Only today
-                    start_date = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
-                    end_date = now.isoformat()
+                    start_date_search = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+                    end_date_search = now.isoformat()
                 elif yesterday_search:
                     # Only yesterday
                     yesterday = now - timedelta(days=1)
-                    start_date = yesterday.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
-                    end_date = yesterday.replace(hour=23, minute=59, second=59).isoformat()
-                
+                    start_date_search = yesterday.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+                    end_date_search = yesterday.replace(hour=23, minute=59, second=59).isoformat()
+
                 with st.spinner(f"Searching for '{keyword}'..."):
                     response = requests.get(
                         f"{API_URL}/search",
@@ -684,30 +749,31 @@ elif option == "Search Messages":
                             "keyword": keyword,
                             "search_logs": search_logs,
                             "search_response": search_response,
-                            "start_date": start_date,
-                            "end_date": end_date
+                            "start_date": start_date_search,
+                            "end_date": end_date_search
                         }
                     )
                     response.raise_for_status()
                     results = response.json()
             except requests.RequestException as e:
                 st.error(f"Search error: {e}")
-                results = []
+                results = [] # Ensure results is defined even on error
 
             st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
-            
+
             if not results:
                 st.info(f"No results found for '{keyword}'.")
             else:
                 st.markdown(f"<div class='sub-header'>Results for '{keyword}'</div>", unsafe_allow_html=True)
                 st.markdown(f"Found {len(results)} matching messages")
-                
+
                 for result in results:
-                    created_at = datetime.fromisoformat(result["created_at"].replace("Z", "+00:00")).strftime("%Y-%m-%d %H:%M:%S")
-                    
+                    created_at_dt = datetime.fromisoformat(result["created_at"].replace("Z", "+00:00"))
+                    created_at_str = created_at_dt.strftime("%Y-%m-%d %H:%M:%S")
+
                     st.markdown(f"""
                     <div style="background-color: #f9fafb; padding: 10px; border-radius: 8px; margin-bottom: 10px;">
-                        <span style="font-weight: bold;">User:</span> {result['user_id']} | 
+                        <span style="font-weight: bold;">User:</span> {result['user_id']} |
                         <span style="font-weight: bold;">Chat:</span> {result['chat_id']}
                     </div>
                     """, unsafe_allow_html=True)
@@ -715,18 +781,18 @@ elif option == "Search Messages":
                     # User Message
                     with st.chat_message("user", avatar="👤"):
                         st.markdown(f"<div class='user-message'>{result['user_query']}</div>", unsafe_allow_html=True)
-                        st.markdown(f"<div class='timestamp'>{created_at}</div>", unsafe_allow_html=True)
+                        st.markdown(f"<div class='timestamp'>{created_at_str}</div>", unsafe_allow_html=True)
 
                     # Bot Response
                     with st.chat_message("assistant", avatar="🤖"):
                         st.markdown(f"<div class='bot-message'>{result['crew_response']}</div>", unsafe_allow_html=True)
                         with st.expander("View Crew Processing Log"):
                             st.code(result["crew_log"])
-                        st.markdown(f"<div class='timestamp'>{created_at}</div>", unsafe_allow_html=True)
-                    
+                        st.markdown(f"<div class='timestamp'>{created_at_str}</div>", unsafe_allow_html=True)
+
                     st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
 
-# Footer
+# --- Footer (runs only if authenticated) ---
 st.markdown("""
 <div style="text-align: center; margin-top: 30px; padding: 10px; color: #6B7280; font-size: 0.8rem;">
     Laika Chat Dashboard • Analytics & Monitoring Tool
